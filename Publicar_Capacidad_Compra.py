@@ -9,8 +9,6 @@ import sys
 
 import Capacidad_compra as cc
 
-st.write(sys.executable)
-
 st.title("Modelo de Capacidad de compra")
 
 st.markdown("### 📂 Cargar archivos")
