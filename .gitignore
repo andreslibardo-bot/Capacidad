@@ -1,7 +1,10 @@
 __pycache__/
 *.pyc
 *.xlsx
+*.xls
+*.csv
 *.docx
+*.pdf
 .env
 .venv/
 .streamlit/secrets.toml
