@@ -1045,3 +1045,357 @@ def estandarizar_llave(df):
             break
 
     return df
+
+
+####################################################### funcion consolidando dos funciones generales ###########################
+
+
+## Para cilindros y tanques ###########
+def ejecutar_cilindros_tanques(
+    df_cilindros,
+    df_tanques_TM,
+    df_tanques_TM_1
+):
+
+    # 1. Cálculo general
+    General = calcular_CCit(
+        df_cilindros,
+        df_tanques_TM,
+        df_tanques_TM_1
+    )
+
+    # 2. Cilindros
+    resultados_cil = procesar_cilindros(
+        df_cilindros,
+        True
+    )
+
+    # 3. Tanques
+    resultados_tan = procesar_tanques(
+        df_tanques_TM,
+        df_tanques_TM_1,
+        True
+    )
+
+    # -----------------------------
+    # Tablas resolución
+    # -----------------------------
+
+    Cilindros_LB = (
+        resultados_cil["cilindros_lb"]
+        .rename(columns={
+            "Código SUI": "Código SUI / Capacidad",
+            "Total_Cilindros": "Total Cilindros",
+            "Capacidad_LB": "Capacidad (Libras)"
+        })
+    )
+
+    Cilindros_KG = (
+        resultados_cil["Cilindros_KG"]
+        .rename(columns={
+            "Código SUI": "Código SUI / Capacidad",
+            "Total_Cilindros": "Total general",
+            "Capacidad_kg": "Capacidad (kg)"
+        })
+    )
+
+    Cilindros_consol = (
+        resultados_cil["data_Cilindros_CapCil"]
+        .rename(columns={
+            "Cap_cil_kg": "Cap. cil (kg)"
+        })
+    )
+
+    resultados_tanques = (
+        resultados_tan["Final"]
+        .rename(columns={
+            "Capacidad_gal": "Capacidad (gal)",
+            "Número_de_Tanques": "Número de Tanques",
+            "CapTEi_t_kg": "CapTEi,t (kg)"
+        })
+    )
+
+    resultado_CC_tanques = (
+        General["resultado"]
+        .rename(columns={
+            "CapTE": "CapTEi,t (kg)",
+            "Cap_cil": "Cap.cil (kg)",
+            "CCit": "(CapTE * 0.85 + Cap_cil) * 0.345"
+        })
+    )
+
+    resumen = resumen_tanques_cilindros(
+        resultados_tan["T1_clean"],
+        resultados_tan["T2_clean"],
+        resultados_cil["Cilindros"]
+    )
+
+    # ==========================
+    # AQUÍ va num_empresas
+    # ==========================
+
+    empresas_t1 = set(
+        resultados_tan["T1_clean"]
+        .loc[resultados_tan["T1_clean"]["CapTE_T1"] > 0, "ID_EMPRESA"]
+    )
+
+    empresas_t2 = set(
+        resultados_tan["T2_clean"]
+        .loc[resultados_tan["T2_clean"]["CapTE_T2"] > 0, "ID_EMPRESA"]
+    )
+
+    empresas_cil = set(
+        resultados_cil["Cilindros"]
+        .loc[resultados_cil["Cilindros"]["CONTEO"] > 0, "ID_EMPRESA"]
+    )
+
+    num_empresas = len(empresas_t1 | empresas_t2 | empresas_cil)
+    Capacidad_GLP_tot = resultados_tan["Final"]
+
+    return {
+        "General": General,
+        "resultados_cil": resultados_cil,
+        "resultados_tan": resultados_tan,
+        "Cilindros_LB": Cilindros_LB,
+        "Cilindros_KG": Cilindros_KG,
+        "Cilindros_consol": Cilindros_consol,
+        "resultados_tanques": resultados_tanques,
+        "resultado_CC_tanques": resultado_CC_tanques,
+
+        # Nuevos indicadores
+        "resumen": resumen,
+        "empresas_cilindros": resumen["empresas_cilindros"],
+        "marcas_cilindros": resumen["marcas_cilindros"],
+        "cilindros_total": resumen["cilindros_total"],
+        "empresas_tanques_T3": resumen["empresas_tanques_T3"],
+        "tanques_T3": resumen["tanques_T3"],
+        "empresas_tanques_T4": resumen["empresas_tanques_T4"],
+        "tanques_T4": resumen["tanques_T4"],
+        "num_empresas": num_empresas, 
+        "Capacidad_GLP_tot": Capacidad_GLP_tot,
+    }
+
+## Para cilindros, tanques y redes ###########
+def ejecutar_completo(
+    df_cilindros,
+    df_tanques_TM,
+    df_tanques_TM_1,
+    df_inversio_nuev,
+    df_proyec_usuar_demand,
+    df_red,
+    inicio_periodo
+):
+
+    resultados = ejecutar_cilindros_tanques(
+        df_cilindros,
+        df_tanques_TM,
+        df_tanques_TM_1
+    )
+
+    # -----------------------------
+    # Redes
+    # -----------------------------
+
+    Cap_Mer_Ini = procesar_activos_completo(
+        df_inversio_nuev,
+        df_proyec_usuar_demand,
+        True
+    )
+
+    Cap_Mer_Ope = calcular_indice_mensual_continuo(
+        df_red,
+        inicio_periodo
+    )
+
+    Cap_Mer_Opera_cons = (
+        Cap_Mer_Ope
+        .groupby(
+            ["ID_EMPRESA", "Prestador"],
+            as_index=False
+        )["Cap_Mer_Opera"]
+        .sum()
+    )
+
+    Capacidad_Redes = consolidar_activos(
+        Cap_Mer_Ini["consolidado"],
+        Cap_Mer_Ope
+    )
+
+    Capacidad_GLP = consolidar_capacidades(
+        resultados["resultados_tan"]["Final"],
+        resultados["resultados_cil"]["data_Cilindros_CapCil"],
+        Cap_Mer_Ini["consolidado"],
+        Cap_Mer_Ope,
+        True
+    )
+
+    tablas = preparar_tablas_resolucion(
+        resultados["General"],
+        resultados["resultados_cil"],
+        resultados["resultados_tan"],
+        Cap_Mer_Ini,
+        Capacidad_GLP
+    )
+
+    resultados.update(tablas)
+
+    resultados.update({
+        "Cap_Mer_Ini": Cap_Mer_Ini,
+        "Cap_Mer_Ope": Cap_Mer_Ope,
+        "Cap_Mer_Opera_cons": Cap_Mer_Opera_cons,
+        "Capacidad_Redes": Capacidad_Redes,
+        "Capacidad_GLP": Capacidad_GLP,
+        "Cap_Mer_Ini_consol": Cap_Mer_Ini["consolidado"],
+        "Capacidad_GLP_tot": Capacidad_GLP["merged_data_final"]
+    })
+    return resultados
+
+def generar_reportes(
+    Capacidad_GLP,
+    resultados_cil,
+    resultados_tan,
+    Cap_Mer_Ini_consol,
+    Cap_Mer_Ope
+):
+
+    empresas = consolidar_agentes(
+        Capacidad_GLP["merged_data_final"],
+        resultados_cil["Cilindros"],
+        resultados_tan,
+        Cap_Mer_Ini_consol,
+        Cap_Mer_Ope,
+        limpiar_id,
+        limpiar_empresa,
+        True
+    )
+
+    Resum_gener = visualizar_y_tabla_final(
+        empresas["agentes_data"],
+        Capacidad_GLP["merged_data_final"],
+        Capacidad_GLP["Capacidad_Redes"]
+    )
+
+    resumen = resumen_tanques_cilindros(
+        resultados_tan["T1_clean"],
+        resultados_tan["T2_clean"],
+        resultados_cil["Cilindros"]
+    )
+
+    participa_capacidad = crear_indice_empresas(
+        empresas["agentes_data"],
+        Capacidad_GLP["merged_data_final"],
+        normalizar_nombre_empresa
+    )
+
+    return {
+        "empresas": empresas,
+        "Resum_gener": Resum_gener,
+        "resumen": resumen,
+        "participa_capacidad": participa_capacidad,
+
+        "num_empresas": Resum_gener["Numero_empresas"],
+
+        "empresas_cilindros": resumen["empresas_cilindros"],
+        "marcas_cilindros": resumen["marcas_cilindros"],
+        "cilindros_total": resumen["cilindros_total"],
+
+        "empresas_tanques_T3": resumen["empresas_tanques_T3"],
+        "tanques_T3": resumen["tanques_T3"],
+
+        "empresas_tanques_T4": resumen["empresas_tanques_T4"],
+        "tanques_T4": resumen["tanques_T4"], 
+        "Capacidad_GLP_tot": Capacidad_GLP["merged_data_final"]
+    }
+
+def obtener_hojas_excel(archivo):
+    return pd.ExcelFile(archivo).sheet_names
+
+def leer_hoja_excel(archivo, hoja):
+    return pd.read_excel(archivo, sheet_name=hoja)
+
+def preparar_tablas_resolucion(
+    General,
+    resultados_cil,
+    resultados_tan,
+    Cap_Mer_Ini=None,
+    Capacidad_GLP=None
+):
+    
+    # Capítulo 1
+    Cilindros_LB = resultados_cil['cilindros_lb'].rename(columns={
+        "Código SUI": "Código SUI / Capacidad",
+        "Total_Cilindros": "Total Cilindros",
+        "Capacidad_LB": "Capacidad (Libras)"
+    })
+
+    # Capítulo 2
+    Cilindros_KG = resultados_cil['Cilindros_KG'].rename(columns={
+        "Código SUI": "Código SUI / Capacidad",
+        "Total_Cilindros": "Total general",
+        "Capacidad_kg": "Capacidad (kg)"
+    })
+
+    # Capítulo 3
+    Cilindros_consol = resultados_cil['data_Cilindros_CapCil'].rename(columns={
+        "Cap_cil_kg": "Cap. cil (kg)"
+    })
+
+    # Capítulo 4
+    resultados_tanques = resultados_tan['Final'].rename(columns={
+        "Capacidad_gal": "Capacidad (gal)",
+        "Número_de_Tanques": "Número de Tanques",
+        "CapTEi_t_kg": "CapTEi,t (kg)"
+    })
+
+    # Capítulo 5
+    resultado_CC_tanques = General['resultado'].rename(columns={
+        "CapTE": "CapTEi,t (kg)",
+        "Cap_cil": "Cap.cil (kg)",
+        "CCit": "(CapTE * 0.85 + Cap_cil) * 0.345"
+    })
+
+    salida = {
+        "Cilindros_LB": Cilindros_LB,
+        "Cilindros_KG": Cilindros_KG,
+        "Cilindros_consol": Cilindros_consol,
+        "resultados_tanques": resultados_tanques,
+        "resultado_CC_tanques": resultado_CC_tanques
+    }
+
+    if Cap_Mer_Ini is not None:
+        salida["Cap_Mer_Ini_consol"] = Cap_Mer_Ini["consolidado"]
+
+    if Capacidad_GLP is not None:
+        salida["Capacidad_GLP_tot"] = Capacidad_GLP["merged_data_final"]
+
+    return salida
+
+def preparar_comparacion(resultados):
+
+    out = {
+        "Cilindros_LB": estandarizar_llave(resultados["Cilindros_LB"]),
+        "Cilindros_KG": estandarizar_llave(resultados["Cilindros_KG"]),
+        "Cilindros_consol": estandarizar_llave(resultados["Cilindros_consol"]),
+        "resultados_tanques": estandarizar_llave(resultados["resultados_tanques"]),
+        "resultados_cilindros_tanques": estandarizar_llave(resultados["resultado_CC_tanques"]),
+          }
+
+    # opcionales (solo si existen)
+    if "Cap_Mer_Ini_consol" in resultados:
+        out["Cap_Mer_Ini"] = estandarizar_llave(resultados["Cap_Mer_Ini_consol"])
+
+    if "Cap_Mer_Opera_cons" in resultados:
+        out["Cap_Mer_Ope"] = estandarizar_llave(resultados["Cap_Mer_Opera_cons"])
+
+    if "Capacidad_Redes" in resultados:
+        out["Capacidad_Redes"] = estandarizar_llave(resultados["Capacidad_Redes"])
+
+    if "Capacidad_GLP_tot" in resultados:
+        out["Capacidad_GLP_tot"] = estandarizar_llave(resultados["Capacidad_GLP_tot"])
+
+
+    if "participa_capacidad" in resultados:
+        out["participa_capacidad"] = estandarizar_llave(resultados["participa_capacidad"])
+
+    return out
+
