@@ -9,6 +9,8 @@ import sys
 
 import Capacidad_compra as cc
 
+st.cache_data.clear()
+st.cache_resource.clear()
 st.write(sys.executable)
 
 st.title("Modelo de Capacidad de compra")
