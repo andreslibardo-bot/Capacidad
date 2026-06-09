@@ -965,17 +965,15 @@ def comparar_workbooks(actual, anterior, key="id_empresa", columnas_ignorar=None
         resultado = pd.DataFrame()
         resultado[key] = df[key]
 
-        columnas_base = sorted(set(
-            c.replace("_act", "")
-            for c in df.columns
-            if c.endswith("_act")
-        ))
-
+         columnas_base = sorted(
+                list(
+                    (set(df_act.columns) & set(df_ant.columns))
+                    - {key}
+                    - set(columnas_ignorar)
+                )
+            )
+            
         for col in columnas_base:
-
-
-            if col in columnas_ignorar:
-                continue
 
             col_act = f"{col}_act"
             col_ant = f"{col}_ant"
