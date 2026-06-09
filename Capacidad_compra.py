@@ -943,6 +943,9 @@ def comparar_workbooks(actual, anterior, key="id_empresa", columnas_ignorar=None
         df_act = actual[hoja].copy()
         df_ant = anterior[hoja].copy()
 
+        df_act.columns = [str(c).strip() for c in df_act.columns]
+        df_ant.columns = [str(c).strip() for c in df_ant.columns ]
+
         # -------------------------
         # llave segura
         # -------------------------
