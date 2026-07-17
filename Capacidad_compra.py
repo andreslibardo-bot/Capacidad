@@ -233,7 +233,7 @@ def procesar_cilindros(Cilindros, debug: bool = False) -> pd.DataFrame:
     return data_Cilindros_CapCil
 
 
-############################################funcion para procesar capacidad RED mercado iniciales - Cap.MerIni¶ #########################
+############################################ funcion para procesar capacidad RED mercado iniciales - Cap.MerIni¶ #########################
 
 
 def procesar_activos_completo(activos: pd.DataFrame, proyecc_demand_usuar: pd.DataFrame, debug: bool = False) -> pd.DataFrame:
@@ -265,40 +265,137 @@ def procesar_activos_completo(activos: pd.DataFrame, proyecc_demand_usuar: pd.Da
     resumen_final = (resumen_tanques
                      .merge(resumen_redes, on=["NUMERO_SOLICITUD", "RAZON_SOCIAL", "ID_SUI",  "RESOLUCION", "MERCADO", "ID_MERCADO"], how="outer")
                      .merge(resumen_proyeccion, on=["NUMERO_SOLICITUD", "RAZON_SOCIAL", "ID_SUI", "RESOLUCION", "MERCADO", "ID_MERCADO"], how="outer"))
-
-    # --- CONSOLIDAR ACTIVOS POR MERCADO ---
-    resumen_tanques_ajust = resumen_final[resumen_final['ID_SUI'] != 0].copy()
-    Llen_Ini_Est = resumen_tanques_ajust.groupby( ["RAZON_SOCIAL", "ID_SUI"] )["Galones total"].sum().reset_index()
-
-    Llen_ini_Lin = resumen_final.groupby("ID_SUI")["volumen_m3"].sum().reset_index()
-    Dem_Proy = resumen_final.groupby("ID_SUI")["DEMANDA_1"].sum().reset_index()
-
-    base_ini = (Llen_Ini_Est.merge(Llen_ini_Lin, on='ID_SUI', how='outer')
-                            .merge(Dem_Proy, on='ID_SUI', how='outer'))
-
-    base_ini["Cap_Mer_Ini"] = ( (0.85 * base_ini["Galones total"]) * 2.01 + (base_ini["volumen_m3"] + 0.5 * base_ini["DEMANDA_1"]) * 2.11 ).round(2)
-    
-    #ajustar los nombre de las columnas
-    base_ini = base_ini.rename(columns={
-    'Galones total': 'LlenIniEst',
-    'volumen_m3': 'LlenIniLin',
-    'DEMANDA_1': 'DemProy'
-      })
-  
+     
     if debug:
         return {
             "tanques": resumen_tanques,
             "redes": resumen_redes,
             "proyeccion": resumen_proyeccion,
-            "resumen_final": resumen_final,
-            "consolidado": base_ini
+            "resumen_final": resumen_final           
         }
 
-    return base_ini
+    return resumen_final
+
+
+def calcular_validacion_cons_red_SUI(usuarios_redes: pd.DataFrame, inicio_periodo: int) -> pd.DataFrame:
+    # =========================
+    # Índice mensual continuo
+    # =========================
+    mes_total = usuarios_redes['ANIO'] * 12 + usuarios_redes['PERIODO']
+    mes_total_ajustado = mes_total - inicio_periodo
+    
+    bloque_6m = mes_total_ajustado // 6
+    max_bloque = bloque_6m.max()
+    
+    # Numeración cronológica de los semestres
+    usuarios_redes['SEMESTRE_NUM'] = bloque_6m - bloque_6m.min() + 1
+    usuarios_redes['SEMESTRE'] = 'P' + usuarios_redes['SEMESTRE_NUM'].astype(int).astype(str)
+    
+    # Mes dentro del semestre (1 a 6)
+    usuarios_redes['PERIODO_MES'] = (mes_total_ajustado % 6) + 1
+
+    df = usuarios_redes.sort_values(['ID_EMPRESA', 'Prestador', 'ID_MERCADO', 'ANIO', 'PERIODO']).copy()
+                   
+    # =========================
+    # Validación de semestres
+    # =========================
+    def validar_grupo(g):
+        t = g['SEMESTRE_NUM'].max() + 1
+
+        ventana_A = g[((g['SEMESTRE_NUM'] == t-2) & (g['PERIODO_MES'] >= 4)) | ((g['SEMESTRE_NUM'] == t-1) & (g['PERIODO_MES'] <= 3))]
+        ventana_B = g[((g['SEMESTRE_NUM'] == t-3) & (g['PERIODO_MES'] >= 4)) | ((g['SEMESTRE_NUM'] == t-2) & (g['PERIODO_MES'] <= 3))]
+        
+        return pd.Series({ 't': t,  't-1': t-1,  't-2': t-2, 't-3': t-3,
+
+        'Meses_A': ', '.join(
+            ventana_A.sort_values(['SEMESTRE_NUM','PERIODO_MES'])
+                     .apply(lambda x: f"S{x['SEMESTRE_NUM']}-M{x['PERIODO_MES']}", axis=1)
+        ),
+
+        'Meses_B': ', '.join(
+            ventana_B.sort_values(['SEMESTRE_NUM','PERIODO_MES'])
+                     .apply(lambda x: f"S{x['SEMESTRE_NUM']}-M{x['PERIODO_MES']}", axis=1)
+        ),
+
+        'Suma_A': ventana_A['SUSCRIPTORES'].sum(),
+        'Suma_B': ventana_B['SUSCRIPTORES'].sum(),
+
+        'valid_A': ventana_A['SUSCRIPTORES'].sum() > 0,
+        'valid_B': ventana_B['SUSCRIPTORES'].sum() > 0
+         })
+                
+    
+    cols = ['ID_EMPRESA', 'ID_MERCADO', 'Prestador']
+    df2 = df[cols + ['SEMESTRE_NUM', 'PERIODO_MES', 'SUSCRIPTORES']].copy()
+
+    resultado = df2.groupby(cols).apply(validar_grupo).reset_index()
+    condiciones = [
+        resultado['valid_A'] & ~resultado['valid_B'],  # Tipo 1
+        resultado['valid_A'] & resultado['valid_B'],   # Tipo 2
+    ]
+
+    resultado['tipo_validacion'] = np.select(
+        condiciones,
+        [1, 2],
+        default=3
+    )
+
+    return resultado
+
+
+def procesar_activos_completo_consoli(resumen_final: pd.DataFrame, resultado: pd.DataFrame ) -> pd.DataFrame:
+  
+    # --- CONSOLIDAR ACTIVOS POR MERCADO ---
+    def validar_mercado(g):
+        # ¿Hay alguna empresa que cumpla A y B?
+        if (g['valid_A'] & g['valid_B']).any():
+            return 2
+
+        # ¿Hay alguna empresa que cumpla solo A?
+        if (g['valid_A'] & ~g['valid_B']).any():
+            return 1
+
+        # Ninguna cumple A
+        return 3
+
+    resultado_mercado = ( resultado
+        .groupby('ID_MERCADO')
+        .apply(validar_mercado)
+        .reset_index(name='tipo_validacion')
+    )
+
+    # Mercados de cada tabla
+    resultado_mercado_filtrado = resultado_mercado[ resultado_mercado["tipo_validacion"].isin([1])]
+    mercados_resultado = set(resultado_mercado_filtrado["ID_MERCADO"].dropna().unique())
+    mercados_resumen = set(resumen_final['ID_MERCADO'].dropna().unique())
+
+    # Están en resultado_mercado pero no en resumen_final para bajarlos de apligas
+    mercados_aplig_falta = pd.DataFrame({ "ID_MERCADO": sorted(mercados_resultado - mercados_resumen) })
+
+    resumen_ajust = (
+            resumen_final
+            .merge(resultado_mercado, on="ID_MERCADO", how="left")
+            .query("tipo_validacion == 1")
+            .copy()
+        )
+    
+    base_ini = (
+            resumen_ajust
+            .groupby('ID_SUI', as_index=False)
+            .agg(
+                RAZON_SOCIAL=('RAZON_SOCIAL', 'first'),
+                LlenIniEst=('Galones total', 'sum'),
+                LleniniLin=('volumen_m3', 'sum'),
+                DemProy=('DEMANDA_1', 'sum')
+            )
+        )
+
+    base_ini["Cap_Mer_Ini"] = ( (0.85 * base_ini["LlenIniEst"]) * 2.01 + (base_ini["LleniniLin"] + 0.5 * base_ini["DemProy"]) * 2.11 ).round(2)
+            
+    return base_ini, mercados_aplig_falta
 
 
 ##########################################    funcion para procesar capacidad RED mercado operacion - Cap.MerOpe¶ ###############################
-
 
 ### para calcular capacidad de GLP por redes para mercados en operacion
 
@@ -337,8 +434,23 @@ def calcular_indice_mensual_continuo(usuarios_redes: pd.DataFrame, inicio_period
     df2 = df[cols + ['SEMESTRE_NUM', 'PERIODO_MES', 'SUSCRIPTORES']].copy()
     
     resultado = df2.groupby(cols).apply(validar_grupo).reset_index()
-    resultado['valida_total'] = resultado['valid_A'] & resultado['valid_B']
+    condiciones = [
+            resultado['valid_A'] & ~resultado['valid_B'],  # Tipo 1
+            resultado['valid_A'] & resultado['valid_B'],   # Tipo 2
+        ]
+
+    resultado['tipo_validacion'] = np.select(
+        condiciones,
+        [1, 2],
+        default=3
+    )
     
+    # Solo los grupos con tipo_validacion = 2
+    resultado_2 = resultado[resultado['tipo_validacion'] == 2]
+
+    # Filtrar df
+    df = df.merge( resultado_2[cols],  on=cols,  how='inner' )
+
     # =========================
     # Promedios de consumo y usuarios
     # =========================
@@ -385,31 +497,26 @@ def calcular_indice_mensual_continuo(usuarios_redes: pd.DataFrame, inicio_period
 def consolidar_activos(resumen_activos: pd.DataFrame, base_final: pd.DataFrame) -> pd.DataFrame:
     # --- Tanques ---
     resumen_tanques_ajust = resumen_activos[resumen_activos['ID_SUI'] != 0].copy()
-    Llen_Ini_Est = resumen_tanques_ajust.groupby( ["RAZON_SOCIAL", "ID_SUI"] )["LlenIniEst"].sum().reset_index()
 
-    # --- Redes ---
-    Llen_ini_Lin = resumen_activos.groupby("ID_SUI")["LlenIniLin"].sum().reset_index()
-
-    # --- Proyección de demanda ---
-    Dem_Proy = resumen_activos.groupby("ID_SUI")["DemProy"].sum().reset_index()
-
-    # --- Merge inicial ---
-    base_ini = (Llen_Ini_Est.merge(Llen_ini_Lin, on='ID_SUI', how='outer')
-                            .merge(Dem_Proy, on='ID_SUI', how='outer'))
+    base_ini = ( resumen_tanques_ajust.groupby("ID_SUI", as_index=False)
+            .agg(
+                LlenIniEst=("LlenIniEst", "sum"),
+                LleniniLin=("LleniniLin", "sum"),
+                DemProy=("DemProy", "sum")
+            )
+        )
 
     # --- Calcular Cap_Mer_Ini ---
-    base_ini["Cap_Mer_Ini"] = ( (0.85 * base_ini["LlenIniEst"]) * 2.01 + (base_ini["LlenIniLin"] + 0.5 * base_ini["DemProy"]) * 2.11 ).round(2)
+    base_ini["Cap_Mer_Ini"] = ( (0.85 * base_ini["LlenIniEst"]) * 2.01 + (base_ini["LleniniLin"] + 0.5 * base_ini["DemProy"]) * 2.11 ).round(2)
 
     # --- Calcular Cap_Mer_Opera por empresa y prestador ---
-    Cap_Mer_Opera = base_final.groupby(["ID_EMPRESA", "Prestador"])["Cap_Mer_Opera"].sum().reset_index()
+    Cap_Mer_Opera = base_final.groupby(["ID_EMPRESA", 'Prestador'])["Cap_Mer_Opera"].sum().reset_index()
 
     # --- Merge con base_ini para obtener Cap_red ---
-    cap_red = pd.merge( base_ini,  Cap_Mer_Opera,  left_on='ID_SUI',  right_on='ID_EMPRESA', how='inner' )
+    cap_red = pd.merge(Cap_Mer_Opera, base_ini, left_on= 'ID_EMPRESA',  right_on='ID_SUI', how="left" )
 
-    cap_red["Cap_red"] = (cap_red["Cap_Mer_Ini"] + cap_red["Cap_Mer_Opera"]).round(2)
-    
-    cap_red = cap_red.drop(columns=['ID_EMPRESA', 'Prestador'])
-
+    cap_red["Cap_red"] = ( cap_red["Cap_Mer_Ini"].fillna(0) +  cap_red["Cap_Mer_Opera"].fillna(0) ).round(2)
+        
     return cap_red
 
 
@@ -434,12 +541,16 @@ def consolidar_capacidades(data_Tanques_CapTE_final: pd.DataFrame,
     Capacidad_Redes = consolidar_activos(resumen_activos,base_final)
 
     # Hacer merge con merged_data para incorporar redes)
-    merged_data = pd.merge(  merged_data,  Capacidad_Redes[['ID_SUI', 'Cap_red']],  left_on='Código SUI',  right_on='ID_SUI',  how='left' )
+    merged_data = pd.merge(  merged_data,  Capacidad_Redes[['ID_EMPRESA', 'Cap_red']],  left_on='Código SUI',  right_on='ID_EMPRESA',  how='left' )
 
     merged_data['Cap_red'] = merged_data['Cap_red'].fillna(0)
     
+    #empresas que estan excdentas de tener plantas de envasado codegas (3358) y Almagas (1638)
+    excep_cil = [3358, 1638]
+
     merged_data['Tiene_Cilindros'] = (merged_data['Cap_cil_kg'] > 0).astype(int)
     
+    merged_data.loc[ merged_data['Código SUI'].isin(excep_cil), 'Tiene_Cilindros'] = 1
 
     # --- 4. Calcular CCit final considerando tanques, cilindros y redes ---
     # Fórmula: CCit_kg = (0.85 * CapTEi_t_kg + Cap_cil_kg + Cap_Mer_Ini) * 0.345
@@ -461,8 +572,6 @@ def consolidar_capacidades(data_Tanques_CapTE_final: pd.DataFrame,
 
 
 ###############################################   Funcion para limpieza de nombre #######################################################
-
-
 
 ## Funciones de limpieza de los nombre  y codigo SUI
 def limpiar_id(x):
@@ -573,8 +682,6 @@ def consolidar_agentes(base_empresas_df: pd.DataFrame, #Capacidad_GLP["merged_da
     
     return agentes_data
 
-
-
 def validar_agentes(agentes_df: pd.DataFrame) -> None:
    
     # --- 1. Verificar duplicados ---
@@ -638,7 +745,6 @@ def crear_indice_empresas(agentes_df: pd.DataFrame,
     tabla_final['participacion'] = tabla_final['CCit_kg'] / total_CCit_kg
     
     return tabla_final
-
 
 
 def visualizar_y_tabla_final(agentes_df: pd.DataFrame, merged_data: pd.DataFrame, merged_data_Red: pd.DataFrame ) -> tuple[pd.DataFrame, float]:
@@ -936,9 +1042,23 @@ def comparar_workbooks(actual, anterior, key="id_empresa", columnas_ignorar=None
 
     resultados = {}
 
-    hojas = actual.keys() & anterior.keys()
+    hojas_validas = []
 
-    for hoja in hojas:
+    for hoja in actual.keys() & anterior.keys():
+
+        df_act = actual[hoja]
+        df_ant = anterior[hoja]
+
+        # verificar que exista la llave
+        if key not in df_act.columns:
+            continue
+
+        if key not in df_ant.columns:
+            continue
+
+        hojas_validas.append(hoja)
+
+    for hoja in hojas_validas:
 
         df_act = actual[hoja].copy()
         df_ant = anterior[hoja].copy()
@@ -966,14 +1086,17 @@ def comparar_workbooks(actual, anterior, key="id_empresa", columnas_ignorar=None
         resultado[key] = df[key]
 
         columnas_base = sorted(
-                list(
-                    (set(df_act.columns) & set(df_ant.columns))
-                    - {key}
-                    - set(columnas_ignorar)
-                )
+            list(
+                (set(df_act.columns) & set(df_ant.columns))
+                - {key}
+                - set(columnas_ignorar)
             )
-            
+        )
+
         for col in columnas_base:
+
+            if col in columnas_ignorar:
+                continue
 
             col_act = f"{col}_act"
             col_ant = f"{col}_ant"
@@ -1196,12 +1319,20 @@ def ejecutar_completo(
     # -----------------------------
     # Redes
     # -----------------------------
-
+     
     Cap_Mer_Ini = procesar_activos_completo(
         df_inversio_nuev,
         df_proyec_usuar_demand,
-        True
+        False
     )
+
+    validacion_tipo = calcular_validacion_cons_red_SUI(
+                    df_red, 
+                    inicio_periodo)
+    
+    Cap_Mer_Ini_consolid, mercados_aplig_falta =  procesar_activos_completo_consoli(
+                    Cap_Mer_Ini, 
+                    validacion_tipo )
 
     Cap_Mer_Ope = calcular_indice_mensual_continuo(
         df_red,
@@ -1210,22 +1341,20 @@ def ejecutar_completo(
 
     Cap_Mer_Opera_cons = (
         Cap_Mer_Ope
-        .groupby(
-            ["ID_EMPRESA", "Prestador"],
-            as_index=False
+        .groupby( ["ID_EMPRESA", "Prestador"], as_index=False
         )["Cap_Mer_Opera"]
         .sum()
     )
 
     Capacidad_Redes = consolidar_activos(
-        Cap_Mer_Ini["consolidado"],
+       Cap_Mer_Ini_consolid,
         Cap_Mer_Ope
     )
 
     Capacidad_GLP = consolidar_capacidades(
         resultados["resultados_tan"]["Final"],
         resultados["resultados_cil"]["data_Cilindros_CapCil"],
-        Cap_Mer_Ini["consolidado"],
+        Cap_Mer_Ini_consolid,
         Cap_Mer_Ope,
         True
     )
@@ -1234,22 +1363,25 @@ def ejecutar_completo(
         resultados["General"],
         resultados["resultados_cil"],
         resultados["resultados_tan"],
-        Cap_Mer_Ini,
+        Cap_Mer_Ini_consolid,
         Capacidad_GLP
     )
 
     resultados.update(tablas)
 
     resultados.update({
-        "Cap_Mer_Ini": Cap_Mer_Ini,
+        "Cap_Mer_Ini_base":Cap_Mer_Ini,
         "Cap_Mer_Ope": Cap_Mer_Ope,
         "Cap_Mer_Opera_cons": Cap_Mer_Opera_cons,
         "Capacidad_Redes": Capacidad_Redes,
         "Capacidad_GLP": Capacidad_GLP,
-        "Cap_Mer_Ini_consol": Cap_Mer_Ini["consolidado"],
-        "Capacidad_GLP_tot": Capacidad_GLP["merged_data_final"]
+        "Cap_Mer_Ini_consol": Cap_Mer_Ini_consolid ,
+        "Capacidad_GLP_tot": Capacidad_GLP["merged_data_final"],
+        "validacion_tipo_red" : validacion_tipo,
+        "mercados_aplig_falta": mercados_aplig_falta
     })
     return resultados
+
 
 def generar_reportes(
     Capacidad_GLP,
@@ -1257,7 +1389,7 @@ def generar_reportes(
     resultados_tan,
     Cap_Mer_Ini_consol,
     Cap_Mer_Ope
-):
+     ):
 
     empresas = consolidar_agentes(
         Capacidad_GLP["merged_data_final"],
@@ -1308,11 +1440,14 @@ def generar_reportes(
         "Capacidad_GLP_tot": Capacidad_GLP["merged_data_final"]
     }
 
+
 def obtener_hojas_excel(archivo):
     return pd.ExcelFile(archivo).sheet_names
 
 def leer_hoja_excel(archivo, hoja):
     return pd.read_excel(archivo, sheet_name=hoja)
+
+
 
 def preparar_tablas_resolucion(
     General,
@@ -1364,7 +1499,7 @@ def preparar_tablas_resolucion(
     }
 
     if Cap_Mer_Ini is not None:
-        salida["Cap_Mer_Ini_consol"] = Cap_Mer_Ini["consolidado"]
+        salida["Cap_Mer_Ini_consol"] = Cap_Mer_Ini
 
     if Capacidad_GLP is not None:
         salida["Capacidad_GLP_tot"] = Capacidad_GLP["merged_data_final"]
