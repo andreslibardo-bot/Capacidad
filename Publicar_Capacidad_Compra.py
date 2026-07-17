@@ -9,8 +9,6 @@ import sys
 
 import Capacidad_compra as cc
 
-st.cache_data.clear()
-st.cache_resource.clear()
 st.write(sys.executable)
 
 st.title("Modelo de Capacidad de compra")
@@ -151,7 +149,7 @@ if archivos_ok:
                 )
 
             else:
-
+                    
                 resultados = cc.ejecutar_completo(
                     df_cilindros,
                     df_tanques_TM,
@@ -290,7 +288,10 @@ if archivos_ok:
             "Cilindros_consol": "Cilindros_consol",
             "resultados_tanques": "resultados_tanques",
             "resultado_CC_tanques": "resultados_cilindros_tanques",
-            "Cap_Mer_Ini_consol": "Cap_Mer_Ini",
+            "validacion_tipo_red": "validacion_tipo_red",
+            "mercados_aplig_falta": "mercados_aplig_falta",
+            "Cap_Mer_Ini_base": "Cap_Mer_Ini_base",
+            "Cap_Mer_Ini_consol": "Cap_Mer_Ini_consol",
             "Cap_Mer_Opera_cons": "Cap_Mer_Ope",
             "Capacidad_Redes": "Capacidad_Redes",
             "Capacidad_GLP_tot": "Capacidad_GLP_tot",
