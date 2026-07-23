@@ -409,14 +409,14 @@ def calcular_indice_mensual_continuo(usuarios_redes: pd.DataFrame, inicio_period
     bloque_6m = mes_total_ajustado // 6
     max_bloque = bloque_6m.max()
     
-    semestre_num = (max_bloque - bloque_6m) + 1
-    usuarios_redes['SEMESTRE'] = 'P' + semestre_num.astype(int).astype(str)
+    # Numeración cronológica de los semestres
+    usuarios_redes['SEMESTRE_NUM'] = bloque_6m - bloque_6m.min() + 1
+    usuarios_redes['SEMESTRE'] = 'P' + usuarios_redes['SEMESTRE_NUM'].astype(int).astype(str)
     
+    # Mes dentro del semestre (1 a 6)
     usuarios_redes['PERIODO_MES'] = (mes_total_ajustado % 6) + 1
-    
-    # Ordenar y crear SEMESTRE_NUM
-    df = usuarios_redes.sort_values(['ID_EMPRESA', 'Prestador',  'ID_MERCADO', 'ANIO', 'PERIODO']).copy()
-    df['SEMESTRE_NUM'] = df['SEMESTRE'].str[1:].astype(int) - 1
+
+    df = usuarios_redes.sort_values(['ID_EMPRESA', 'Prestador', 'ID_MERCADO', 'ANIO', 'PERIODO']).copy()
     
     # =========================
     # Validación de semestres
