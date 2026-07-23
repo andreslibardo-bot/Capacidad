@@ -421,29 +421,47 @@ def calcular_indice_mensual_continuo(usuarios_redes: pd.DataFrame, inicio_period
     # =========================
     # Validación de semestres
     # =========================
-    def validar_grupo(g):
-        t = g['SEMESTRE_NUM'].max()
-        ventana_A = g[((g['SEMESTRE_NUM'] == t-1) & (g['PERIODO_MES'] >= 4)) | ((g['SEMESTRE_NUM'] == t-2) & (g['PERIODO_MES'] <= 3))]
-        ventana_B = g[((g['SEMESTRE_NUM'] == t-2) & (g['PERIODO_MES'] >= 4)) | ((g['SEMESTRE_NUM'] == t-1) & (g['PERIODO_MES'] <= 3))]
-        return pd.Series({
-            'valid_A': (ventana_A['SUSCRIPTORES'] > 0).all(),
-            'valid_B': (ventana_B['SUSCRIPTORES'] > 0).all()
-        })
+     def validar_grupo(g):
+        t = g['SEMESTRE_NUM'].max() + 1
+
+        ventana_A = g[((g['SEMESTRE_NUM'] == t-2) & (g['PERIODO_MES'] >= 4)) | ((g['SEMESTRE_NUM'] == t-1) & (g['PERIODO_MES'] <= 3))]
+        ventana_B = g[((g['SEMESTRE_NUM'] == t-3) & (g['PERIODO_MES'] >= 4)) | ((g['SEMESTRE_NUM'] == t-2) & (g['PERIODO_MES'] <= 3))]
+        
+        return pd.Series({ 't': t,  't-1': t-1,  't-2': t-2, 't-3': t-3,
+
+        'Meses_A': ', '.join(
+            ventana_A.sort_values(['SEMESTRE_NUM','PERIODO_MES'])
+                     .apply(lambda x: f"S{x['SEMESTRE_NUM']}-M{x['PERIODO_MES']}", axis=1)
+        ),
+
+        'Meses_B': ', '.join(
+            ventana_B.sort_values(['SEMESTRE_NUM','PERIODO_MES'])
+                     .apply(lambda x: f"S{x['SEMESTRE_NUM']}-M{x['PERIODO_MES']}", axis=1)
+        ),
+
+        'Suma_A': ventana_A['SUSCRIPTORES'].sum(),
+        'Suma_B': ventana_B['SUSCRIPTORES'].sum(),
+
+        'valid_A': ventana_A['SUSCRIPTORES'].sum() > 0,
+        'valid_B': ventana_B['SUSCRIPTORES'].sum() > 0
+         })
+                
     
     cols = ['ID_EMPRESA', 'ID_MERCADO', 'Prestador']
     df2 = df[cols + ['SEMESTRE_NUM', 'PERIODO_MES', 'SUSCRIPTORES']].copy()
-    
+
     resultado = df2.groupby(cols).apply(validar_grupo).reset_index()
     condiciones = [
-            resultado['valid_A'] & ~resultado['valid_B'],  # Tipo 1
-            resultado['valid_A'] & resultado['valid_B'],   # Tipo 2
-        ]
+        resultado['valid_A'] & ~resultado['valid_B'],  # Tipo 1
+        resultado['valid_A'] & resultado['valid_B'],   # Tipo 2
+    ]
 
     resultado['tipo_validacion'] = np.select(
         condiciones,
         [1, 2],
         default=3
     )
+
     
     # Solo los grupos con tipo_validacion = 2
     resultado_2 = resultado[resultado['tipo_validacion'] == 2]
