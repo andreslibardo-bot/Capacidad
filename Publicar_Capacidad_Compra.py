@@ -292,7 +292,8 @@ if archivos_ok:
             "mercados_aplig_falta": "mercados_aplig_falta",
             "Cap_Mer_Ini_base": "Cap_Mer_Ini_base",
             "Cap_Mer_Ini_consol": "Cap_Mer_Ini_consol",
-            "Cap_Mer_Opera_cons": "Cap_Mer_Ope",
+            "Cap_Mer_Opera_cons": "Cap_Mer_Ope_cons",
+            "Cap_Mer_Ope": "Cap_Mer_Ope",     
             "Capacidad_Redes": "Capacidad_Redes",
             "Capacidad_GLP_tot": "Capacidad_GLP_tot",
             "participa_capacidad": "participa_capacidad"
