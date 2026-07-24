@@ -323,7 +323,7 @@ def calcular_validacion_cons_red_SUI(usuarios_redes: pd.DataFrame, inicio_period
         'valid_A': ventana_A['SUSCRIPTORES'].sum() > 0,
         'valid_B': ventana_B['SUSCRIPTORES'].sum() > 0
          })
-                
+         
     
     cols = ['ID_EMPRESA', 'ID_MERCADO', 'Prestador']
     df2 = df[cols + ['SEMESTRE_NUM', 'PERIODO_MES', 'SUSCRIPTORES']].copy()
@@ -394,7 +394,6 @@ def procesar_activos_completo_consoli(resumen_final: pd.DataFrame, resultado: pd
             
     return base_ini, mercados_aplig_falta
 
-
 ##########################################    funcion para procesar capacidad RED mercado operacion - Cap.MerOpe¶ ###############################
 
 ### para calcular capacidad de GLP por redes para mercados en operacion
@@ -416,12 +415,11 @@ def calcular_indice_mensual_continuo(usuarios_redes: pd.DataFrame, inicio_period
     # Mes dentro del semestre (1 a 6)
     usuarios_redes['PERIODO_MES'] = (mes_total_ajustado % 6) + 1
 
-    df = usuarios_redes.sort_values(['ID_EMPRESA', 'Prestador', 'ID_MERCADO', 'ANIO', 'PERIODO']).copy()
-    
+    usuarios_redes_cop = usuarios_redes.sort_values(['ID_EMPRESA', 'Prestador', 'ID_MERCADO', 'ANIO', 'PERIODO']).copy()
     # =========================
     # Validación de semestres
     # =========================
-     def validar_grupo(g):
+    def validar_grupo(g):
         t = g['SEMESTRE_NUM'].max() + 1
 
         ventana_A = g[((g['SEMESTRE_NUM'] == t-2) & (g['PERIODO_MES'] >= 4)) | ((g['SEMESTRE_NUM'] == t-1) & (g['PERIODO_MES'] <= 3))]
@@ -445,10 +443,10 @@ def calcular_indice_mensual_continuo(usuarios_redes: pd.DataFrame, inicio_period
         'valid_A': ventana_A['SUSCRIPTORES'].sum() > 0,
         'valid_B': ventana_B['SUSCRIPTORES'].sum() > 0
          })
-                
+         
     
     cols = ['ID_EMPRESA', 'ID_MERCADO', 'Prestador']
-    df2 = df[cols + ['SEMESTRE_NUM', 'PERIODO_MES', 'SUSCRIPTORES']].copy()
+    df2 = usuarios_redes_cop[cols + ['SEMESTRE_NUM', 'PERIODO_MES', 'SUSCRIPTORES']].copy()
 
     resultado = df2.groupby(cols).apply(validar_grupo).reset_index()
     condiciones = [
@@ -462,53 +460,68 @@ def calcular_indice_mensual_continuo(usuarios_redes: pd.DataFrame, inicio_period
         default=3
     )
 
-    
     # Solo los grupos con tipo_validacion = 2
-    resultado_2 = resultado[resultado['tipo_validacion'] == 2]
+    #resultado_2 = resultado[resultado['tipo_validacion'] == 2]
+    resultado_2 = resultado.copy()
 
-    # Filtrar df
-    df = df.merge( resultado_2[cols],  on=cols,  how='inner' )
+    redes_exit = usuarios_redes_cop.merge( resultado_2[ ['ID_EMPRESA', 'ID_MERCADO', 'Prestador',] ],   on=['ID_EMPRESA', 'ID_MERCADO', 'Prestador'], how='outer'  )
+    
+    redes_mensual = ( redes_exit.groupby( [ 'ID_EMPRESA', 'Prestador', 'SEMESTRE_NUM',  'PERIODO_MES' ],  as_index=False ).agg(
+                                CONSUMO=('CONSUMO', 'sum'),
+                                SUSCRIPTORES=('SUSCRIPTORES', 'sum'),
+                                NUM_MERCADOS = ('ID_MERCADO', 'nunique'),
+                                MERCADOS=('ID_MERCADO', lambda x: sorted(x.dropna().unique().tolist()))
+                            )
+                        ) 
 
     # =========================
     # Promedios de consumo y usuarios
     # =========================
-    t = df['SEMESTRE_NUM'].min()
-    t_1, t_2 = t + 1, t + 2
+    t = redes_exit['SEMESTRE_NUM'].max()
+    t_1, t_2 = t  , t - 1
     
-    # Función auxiliar para calcular promedio de una columna
-    def promedio_por_semestre(df, semestre, meses, columna, nombre_col):
-        subset = df[(df['SEMESTRE_NUM'] == semestre) & (df['PERIODO_MES'].isin(meses))]
-        promedio = subset.groupby(['ID_EMPRESA', 'ID_MERCADO', 'Prestador'])[columna].mean().round(0).reset_index()
-        promedio.rename(columns={columna: nombre_col}, inplace=True)
-        return promedio
-    
-    promedio_consumo_t1 = promedio_por_semestre(df, t_1, [1,2,3], 'CONSUMO', 'PROM_CONSUMO_T1_M_3')
-    promedio_usuarios_t1 = promedio_por_semestre(df, t_1, [1,2,3], 'SUSCRIPTORES', 'PROM_USUARIOS_T1')
-    promedio_usuarios_t2 = promedio_por_semestre(df, t_2, [1,2,3], 'SUSCRIPTORES', 'PROM_USUARIOS_T2')
+    def calcular_promedios( df,  semestre,  nombre_consumo,  nombre_suscriptores,  nombre_No_mercados, nombre_mercados ):
+        datos = df[
+            (df['SEMESTRE_NUM'] == semestre) &
+            (df['PERIODO_MES'].isin([1, 2, 3]))
+        ]
+
+        resultado = ( datos.groupby( ['ID_EMPRESA', 'Prestador'],  as_index=False )
+                                .agg(
+                                    **{
+                                        nombre_consumo: ('CONSUMO', 'mean'),
+                                        nombre_suscriptores: ('SUSCRIPTORES', 'mean'),
+                                        "mercados": ('NUM_MERCADOS', 'max'),
+                                        'MERCADOS': ('MERCADOS', lambda x: sorted( set(  mercado for lista in x  for mercado in lista  )  ) )
+                                    }
+                                )
+                            )
+
+        return resultado
+     
+    promedio_t_1 = calcular_promedios(redes_mensual, t_1,  'Vt_1',   'NSt_1', 'No_Mercados', 'Mercados')
+    promedio_t_2 = calcular_promedios(redes_mensual, t_2,   'Vt_2',  'NSt_2', 'No_Mercados', 'Mercados')
+   
     
     # =========================
     # Unión de todas las tablas
     # =========================
-    base_final = (promedio_usuarios_t1
-                  .merge(promedio_usuarios_t2, on=['ID_EMPRESA', 'ID_MERCADO','Prestador'], how='outer')
-                  .merge(promedio_consumo_t1, on=['ID_EMPRESA', 'ID_MERCADO','Prestador'], how='outer')
-                  .merge(resultado, on=['ID_EMPRESA', 'ID_MERCADO','Prestador'], how='outer'))
-    
-    
+    base_final = promedio_t_1.merge(promedio_t_2, on=['ID_EMPRESA', 'Prestador'], how='outer')     
+        
     # =========================
     # Calcular Cap_Mer_Opera
     # =========================
-    base_final["Cap_Mer_Opera"] = ( base_final["PROM_CONSUMO_T1_M_3"] * 2.11 * (base_final["PROM_USUARIOS_T1"] / base_final["PROM_USUARIOS_T2"]) * 6 ).round(2)
-    
-     #ajustar los nombre de las columnas
-    base_final = base_final.rename(columns={
-    'PROM_CONSUMO_T1_M_3': 'Vt_1',
-    'PROM_USUARIOS_T1': 'NSt_1',
-    'PROM_USUARIOS_T2': 'NSt_2'
-      })
-            
-    return base_final
 
+    base_final["Cap_Mer_Opera"] = ( base_final["Vt_1"] * 2.11 * ( base_final["NSt_1"] /base_final["NSt_2"]  ) * 6)
+               
+    return (
+        base_final,
+        usuarios_redes_cop,
+        resultado,
+        resultado_2,
+        redes_exit,
+        redes_mensual
+    )
 
 ####################################################################  funcion para procesar capacidad RED - Cap.red ###################################################
 ### para consolidar la capacidad de GLP por redes para mercados en operacion
@@ -1352,7 +1365,14 @@ def ejecutar_completo(
                     Cap_Mer_Ini, 
                     validacion_tipo )
 
-    Cap_Mer_Ope = calcular_indice_mensual_continuo(
+       
+    (   Cap_Mer_Ope,
+        usuarios_redes_cop,
+        resultado,
+        resultado_2,
+        redes_exit,
+        redes_mensual
+    ) = calcular_indice_mensual_continuo(
         df_red,
         inicio_periodo
     )
@@ -1396,7 +1416,13 @@ def ejecutar_completo(
         "Cap_Mer_Ini_consol": Cap_Mer_Ini_consolid ,
         "Capacidad_GLP_tot": Capacidad_GLP["merged_data_final"],
         "validacion_tipo_red" : validacion_tipo,
-        "mercados_aplig_falta": mercados_aplig_falta
+        "mercados_aplig_falta": mercados_aplig_falta,
+        "usuarios_redes_cop":  usuarios_redes_cop,
+        "resultado":  resultado,
+        "resultado_2":  resultado_2,
+        "redes_exit": redes_exit,
+        "redes_mensual": redes_mensual
+
     })
     return resultados
 
