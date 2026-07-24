@@ -585,7 +585,11 @@ def consolidar_capacidades(data_Tanques_CapTE_final: pd.DataFrame,
 
     # --- 4. Calcular CCit final considerando tanques, cilindros y redes ---
     # Fórmula: CCit_kg = (0.85 * CapTEi_t_kg + Cap_cil_kg + Cap_Mer_Ini) * 0.345
-    
+                                
+    merged_data['CapTEi_t_kg'] = merged_data['CapTEi_t_kg'].fillna(0)
+    merged_data['Cap_cil_kg'] = merged_data['Cap_cil_kg'].fillna(0)
+    merged_data['Cap_red'] = merged_data['Cap_red'].fillna(0)
+                                
     merged_data['CCit_kg'] = ((0.85 * merged_data['CapTEi_t_kg'] +  merged_data['Cap_cil_kg'] ) * 0.345 *  merged_data['Tiene_Cilindros'] + merged_data['Cap_red'] ).round(0)
 
     # --- 5. Seleccionar columnas finales y ordenar ---
