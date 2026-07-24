@@ -572,7 +572,7 @@ def consolidar_capacidades(data_Tanques_CapTE_final: pd.DataFrame,
     Capacidad_Redes = consolidar_activos(resumen_activos,base_final)
 
     # Hacer merge con merged_data para incorporar redes)
-    merged_data = pd.merge(  merged_data,  Capacidad_Redes[['ID_EMPRESA', 'Cap_red']],  left_on='Código SUI',  right_on='ID_EMPRESA',  how='left' )
+    merged_data = pd.merge(  merged_data,  Capacidad_Redes[['ID_EMPRESA', 'Cap_red']],  left_on='Código SUI',  right_on='ID_EMPRESA',  how='outer' )
 
     merged_data['Cap_red'] = merged_data['Cap_red'].fillna(0)
     
