@@ -293,10 +293,15 @@ if archivos_ok:
             "Cap_Mer_Ini_base": "Cap_Mer_Ini_base",
             "Cap_Mer_Ini_consol": "Cap_Mer_Ini_consol",
             "Cap_Mer_Opera_cons": "Cap_Mer_Ope_cons",
-            "Cap_Mer_Ope": "Cap_Mer_Ope",     
+            "Cap_Mer_Ope": "Cap_Mer_Ope",
             "Capacidad_Redes": "Capacidad_Redes",
             "Capacidad_GLP_tot": "Capacidad_GLP_tot",
-            "participa_capacidad": "participa_capacidad"
+            "participa_capacidad": "participa_capacidad",
+            "usuarios_redes_cop":  "usuarios_redes_cop",
+            "resultado":  "resultado",
+            "resultado_2":  "resultado_2",
+           "redes_exit": "redes_exit",
+           "redes_mensual": "redes_mensual"
         }
 
         with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
