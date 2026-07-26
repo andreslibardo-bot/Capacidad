@@ -211,27 +211,27 @@ if archivos_ok:
 
         tablas = [
                 (
-                    "capacidad de envase en cilindros, para cada marca de propiedad del distribuidor de acuerdo con la información registrada desde el 2008 hasta octubre de 2012, por AIC proyectos",
+                    "Tabla 1 — Cilindros en libras (Cap1 i,t)  capacidad de envase en cilindros, para cada marca de propiedad del distribuidor de acuerdo con la información registrada desde el 2008 hasta octubre de 2012, por AIC proyectos",
                     resultados["Cilindros_LB"].drop(columns=["Empresa"])
                 ),
                 (
-                    "Capacidad de envase en cilindros, para cada marca de propiedad del distribuidor de acuerdo con la información registrada al SUI desde noviembre de 2012 hasta la fecha",
+                    "Tabla 2 — Cilindros en kilogramos (Cap2 i,t) Capacidad de envase en cilindros, para cada marca de propiedad del distribuidor de acuerdo con la información registrada al SUI desde noviembre de 2012 hasta la fecha",
                     resultados["Cilindros_KG"].drop(columns=["Empresa"])
                 ),
                 (
-                    "Capacidad total de envase en cilindros de propiedad del distribuidor",
+                    "Tabla 3 — Consolidado Cap.cil Capacidad total de envase en cilindros de propiedad del distribuidor",
                     resultados["Cilindros_consol"]
                 ),
                 (
-                    "La capacidad total de tanques estacionarios atendidos por el distribuidor",
+                    "Tabla 4 — Tanques estacionarios (Cap.TE) La capacidad total de tanques estacionarios atendidos por el distribuidor",
                     resultados["resultados_tanques"]
                 ),
                 (
-                    "La capacidad de tanques y cilindros estacionarios atendidos por el distribuidor",
-                    resultados["resultado_CC_tanques"]
+                    "Tabla 5 — Unión cilindros + tanques (previo a Fa y Cap.red) La capacidad de tanques y cilindros estacionarios atendidos por el distribuidor",
+                    resultados["resultado_CC_tanques"][["ID_EMPRESA", "EMPRESA", "CapTEi,t (kg)", "Cap.cil (kg)"]] 
                 ),
                 (
-                    "La capacidad de compra de cada distribuidor",
+                    "Tabla_9_Capacidad_GLP_tot",
                     cap_glp
                 ),
             ]
@@ -245,21 +245,30 @@ if archivos_ok:
 
             tablas.extend([
                 (
-                    "La capacidad de mercado inicial de cada distribuidor",
+                    "Tabla_6_Cap_Mer_Ini_consol",
                     resultados["Cap_Mer_Ini_consol"]
                 ),
                 (
-                    "La capacidad de mercado en operación de cada distribuidor",
+                    "Tabla_7_Cap_Mer_Ope_cons",
                     resultados["Cap_Mer_Opera_cons"]
                 ),
                 (
-                    "La capacidad de redes de cada distribuidor",
-                    resultados["Capacidad_Redes"]
+                    "Tabla_8_Capacidad_Redes",
+                    resultados["Capacidad_Redes"][["ID_EMPRESA", "Prestador", "Cap_Mer_Opera",	"LlenIniEst", "LleniniLin",	"DemProy",	"Cap_Mer_Ini",	"Cap_red"]]
                 ),
                 (
-                    "La capacidad de compra de cada distribuidor",
+                    "Tabla_9_Capacidad_GLP_tot",
                     cap_glp
+                ),
+                (
+                    "Tabla_11_ Variables_Cap_Mer_Ope",
+                    resultados["Cap_Mer_Ope"][["ID_EMPRESA", "Prestador", "Vt_1", "NSt_1", "NSt_2", "Cap_Mer_Opera"]] 
+                ),
+               (
+                    "Tabla_12_validacion_tipo_red",
+                    resultados["validacion_tipo_red"][["ID_EMPRESA","ID_MERCADO", "Prestador", "valid_A", "valid_B", "tipo_validacion"]]
                 )
+
             ])
 
  
@@ -283,25 +292,19 @@ if archivos_ok:
         buffer = io.BytesIO()
 
         hojas_excel = {
-            "Cilindros_LB": "Cilindros_LB",
-            "Cilindros_KG": "Cilindros_KG",
-            "Cilindros_consol": "Cilindros_consol",
-            "resultados_tanques": "resultados_tanques",
-            "resultado_CC_tanques": "resultados_cilindros_tanques",
-            "validacion_tipo_red": "validacion_tipo_red",
-            "mercados_aplig_falta": "mercados_aplig_falta",
-            "Cap_Mer_Ini_base": "Cap_Mer_Ini_base",
-            "Cap_Mer_Ini_consol": "Cap_Mer_Ini_consol",
-            "Cap_Mer_Opera_cons": "Cap_Mer_Ope_cons",
-            "Cap_Mer_Ope": "Cap_Mer_Ope",
-            "Capacidad_Redes": "Capacidad_Redes",
-            "Capacidad_GLP_tot": "Capacidad_GLP_tot",
-            "participa_capacidad": "participa_capacidad",
-            "usuarios_redes_cop":  "usuarios_redes_cop",
-            "resultado":  "resultado",
-            "resultado_2":  "resultado_2",
-           "redes_exit": "redes_exit",
-           "redes_mensual": "redes_mensual"
+            "Cilindros_LB": "Tabla_1_Cilindros_LB",
+            "Cilindros_KG": "Tabla_2_Cilindros_KG",
+            "Cilindros_consol": "Tabla_3_Cilindros_consol",
+            "resultados_tanques": "Tabla_4_resultados_tanques",
+            "resultado_CC_tanques": "Tabla_5_resultados_cilindros_tanques",
+            "Cap_Mer_Ini_consol": "Tabla_6_Cap_Mer_Ini_consol",
+            "Cap_Mer_Opera_cons": "Tabla_7_Cap_Mer_Ope_cons",
+            "Capacidad_Redes": "Tabla_8_Capacidad_Redes",
+            "Capacidad_GLP_tot": "Tabla_9_Capacidad_GLP_tot",
+            "participa_capacidad": "Tabla_10_participa_capacidad",
+            "Cap_Mer_Ope": "Tabla_11_ Variables_Cap_Mer_Ope",
+            "validacion_tipo_red": "Tabla_12_validacion_tipo_red",
+            "mercados_aplig_falta": "Tabla_13_mercados_apligas_faltantes"
         }
 
         with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
