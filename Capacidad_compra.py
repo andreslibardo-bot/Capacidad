@@ -593,7 +593,7 @@ def consolidar_capacidades(data_Tanques_CapTE_final: pd.DataFrame,
 
     # --- 5. Seleccionar columnas finales y ordenar ---
     merged_data['Código SUI'] = merged_data['Código SUI'].fillna(merged_data['ID_EMPRESA'] )
-    merged_data_final = merged_data[['Código SUI', 'CapTEi_t_kg', 'Cap_cil_kg', 'Cap_red', 'CCit_kg']]
+    merged_data_final = merged_data[['Código SUI', 'CapTEi_t_kg', 'Cap_cil_kg', 'Cap_red', 'CCit_kg','Tiene_Cilindros']]
     merged_data_final = merged_data_final.sort_values('Código SUI').reset_index(drop=True)
 
     if debug:
