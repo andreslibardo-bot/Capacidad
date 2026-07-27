@@ -267,10 +267,17 @@ if archivos_ok:
                (
                     "Tabla_12_validacion_tipo_red",
                     resultados["validacion_tipo_red"][["ID_EMPRESA","ID_MERCADO", "Prestador", "valid_A", "valid_B", "tipo_validacion"]]
-                )
+                ),
+                (
+                   "Tabla_13_resumen_capacidad_compra",
+                    resultados["Resumen_Capacidad_GLP"]
+                ),
+                (
+                   "Tabla_14_Kg_tanques_no_cumple",
+                    resultados["Kg_tanques_no_cumple"]
+                )                 
 
             ])
-
  
         word_file = cc.generar_word_completo(tablas)
 
