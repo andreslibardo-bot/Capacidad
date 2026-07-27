@@ -205,6 +205,7 @@ if archivos_ok:
         # Descargar Word
         # -------------------------
         cap_glp = resultados["Capacidad_GLP_tot"]
+        tabla_total_no_cumple = pd.DataFrame({ "Concepto": [ "CapTEi_t_kg de empresas que no cumplen" ], "Total": [resultados["Kg_tanques_no_cumple"] ]})    
 
         if "Código_SUI_num" in cap_glp.columns:
             cap_glp = cap_glp.drop(columns=["Código_SUI_num"])
@@ -274,7 +275,7 @@ if archivos_ok:
                 ),
                 (
                    "Tabla_14_Kg_tanques_no_cumple",
-                    resultados["Kg_tanques_no_cumple"]
+                   tabla_total_no_cumple
                 )                 
 
             ])
