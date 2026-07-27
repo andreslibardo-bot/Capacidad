@@ -1409,6 +1409,8 @@ def ejecutar_completo(
         Capacidad_GLP
     )
 
+    tabla_resultado, resumen, total_no_cumple = calcular_participacion_capacidad(Capacidad_GLP["merged_data_final"], excep_cil=[3358, 1638])
+
     resultados.update(tablas)
 
     resultados.update({
@@ -1425,7 +1427,9 @@ def ejecutar_completo(
         "resultado":  resultado,
         "resultado_2":  resultado_2,
         "redes_exit": redes_exit,
-        "redes_mensual": redes_mensual
+        "redes_mensual": redes_mensual,
+        "Resumen_Capacidad_GLP" : resumen, 
+        "Kg_tanques_no_cumple": total_no_cumple
 
     })
     return resultados
