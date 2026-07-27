@@ -1583,3 +1583,74 @@ def preparar_comparacion(resultados):
 
     return out
 
+
+def calcular_participacion_capacidad(tabla, excep_cil=None):
+    
+    # Si no se proporcionan excepciones, usar lista vacía
+    if excep_cil is None:
+        excep_cil = []
+     
+    condicion = ( (tabla["Cap_cil_kg"] > 0) | (tabla["Código SUI"].isin(excep_cil)) )
+
+    tabla["CapTEi_ajustada"] = np.where( condicion,  tabla["CapTEi_t_kg"] * 0.85 * 0.345, 0 )
+
+    tabla["Cap_cil_ajustada"] = ( tabla["Cap_cil_kg"] * 0.345 )
+
+    # ---------------------------------------------------------
+    # 4. Totales
+    # ---------------------------------------------------------
+    
+    total_CapTEi = tabla["CapTEi_ajustada"].sum()
+    
+    total_Cap_cil = tabla["Cap_cil_ajustada"].sum()
+    
+    total_Cap_red = tabla["Cap_red"].sum()
+
+    # ---------------------------------------------------------
+    # 5. Total general
+    # ---------------------------------------------------------
+    
+    total_general = ( total_CapTEi + total_Cap_cil + total_Cap_red )
+
+    # ---------------------------------------------------------
+    # 6. Crear resumen
+    # ---------------------------------------------------------
+    
+    resumen = pd.DataFrame({
+        "Tipo": [ "CapTEi_t_kg",  "Cap_cil_kg",  "Cap_red" ],
+        "Total": [ total_CapTEi,  total_Cap_cil, total_Cap_red ]
+                          })
+
+    # ---------------------------------------------------------
+    # 7. Participación porcentual
+    # ---------------------------------------------------------
+    
+    if total_general != 0:
+        resumen["Participacion_%"] = ( resumen["Total"] /  total_general *  100 )
+    else:
+        resumen["Participacion_%"] = 0
+
+    # ---------------------------------------------------------
+    # 8. Identificar los que NO cumplen la condición
+    # ---------------------------------------------------------
+    
+    condicion_no_cumple = ( (tabla["Cap_cil_kg"] <= 0) & (~tabla["Código SUI"].isin(excep_cil)) )
+
+    total_CapTEi_no_cumple = ( tabla.loc[ condicion_no_cumple,  "CapTEi_t_kg" ].sum()
+        * 0.85
+        * 0.345
+    )
+
+    # ---------------------------------------------------------
+    # 10. Retornar resultados
+    # ---------------------------------------------------------
+    
+    return (
+        tabla,
+        resumen,
+        total_CapTEi_no_cumple
+    )
+
+
+
+
